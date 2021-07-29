@@ -1,0 +1,2 @@
+# checkJava
+这是一个检测java进程和linux系统pid数量、cpu使用率和内存使用率的程序
