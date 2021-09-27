@@ -1,0 +1,190 @@
+package com.yyq;
+
+import java.util.Properties;
+import javax.mail.Authenticator;
+import javax.mail.Message;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
+
+/**
+ * 
+ * @author 杨永琪
+ * @date 2021年8月16日
+ */
+public class CheckJava {
+
+	/**
+	 * 邮箱
+	 */
+	public static final String EMAIL = "XXXXXXX@qq.com";
+	/**
+	 * 密码
+	 */
+	public static final String EMAIL_PWD = "XXXXXXX";
+	/**
+	 * 接受邮件的邮箱
+	 */
+	public static final String RECIPIENT = "XXXXXXX@qq.com";
+	
+	public static void main(String[] args) {
+		String jarName = "res_compare.jar";
+		//查看程序进程号
+		String process = checkJava(jarName);
+		//查看磁盘使用率
+		checkDisk();
+		//查看总进程使用数量
+		checkPid();
+		if(null == process){
+			return;
+		}
+		//查看进程cpu使用率
+		checkCPU(process);
+		//查看进程内存使用率
+		checkMEM(process);
+	}
+	
+	/**
+	 * 检查指定的java进程是否存在 
+	 * @param jarName  jar包名称
+	 * @return 进程号
+	 */
+	public static String checkJava(String jarName){
+		String checkJavaCmd =String.format("ps -ef | grep %s | grep -v grep | awk '{print $2}'|xargs",jarName);
+		String result = MyRuntimeExec.exec(checkJavaCmd);
+		System.out.println("当前程序 "+jarName+" 进程号是："+result);
+		if(null == result || "".equals(result) || " ".equals(result)){
+			sendMail(EMAIL, EMAIL_PWD, RECIPIENT, jarName+"服务挂了",String.format("主人,您的服务挂啦(%s),赶快处理呀!",jarName));
+			return null;
+		}
+		return result.trim();
+	}
+	
+	/**
+	 * 检查 cpu是否超过阈值
+	 * @param process  进程号
+	 */
+	public static void checkCPU(String process){
+		int cpuMax = 350;//cpu阈值
+		String cpuCmd = String.format("top -b -n 1 | grep %s | awk '{print int($9)}'",process);
+		String cpuResult = MyRuntimeExec.exec(cpuCmd);
+		cpuResult = cpuResult.trim();
+		Integer cpu = Integer.valueOf(cpuResult);
+		System.out.println("当前程序 "+process+" cpu使用率是："+cpu);
+		if(cpu > cpuMax){
+			sendMail(EMAIL, EMAIL_PWD, RECIPIENT, "cpu超过阈值了",String.format("主人,您的服务cpu爆表啦(%s)现在cpu是:%s,赶快处理呀!",process,cpuResult));
+		}
+	}
+	/**
+	 * 检查 内存是否超过阈值
+	 * @param process  进程号
+	 */
+	public static void checkMEM(String process){
+		int memMax = 50;//内存阈值
+		String memCmd = String.format("top -b -n 1 | grep %s | awk '{print int($10)}'",process);
+		String memResult = MyRuntimeExec.exec(memCmd);
+		memResult = memResult.trim();
+		Integer mem = Integer.valueOf(memResult);
+		System.out.println("当前程序 "+process+" 内存使用率是："+mem);
+		if(mem > memMax){
+			sendMail(EMAIL, EMAIL_PWD, RECIPIENT, "内存超过阈值了",String.format("主人,您的服务内存爆表啦(%s)现在内存是:%s,赶快处理呀!",process,memResult));
+		}
+	}
+	/**
+	 * 检查linux 磁盘空间是否超过阈值
+	 */
+	public static void checkDisk(){
+		int diskMax = 90;//磁盘使用阈值(百分比)
+		String diskCmd = "df -h|head -2| awk '{print int($5)}'|xargs";
+		String diskResult = MyRuntimeExec.exec(diskCmd);
+		String useageStr = diskResult.split(" ")[1];
+		Integer usage = Integer.valueOf(useageStr.trim());
+		System.out.println("当前系统磁盘使用率是："+usage);
+		if(usage > diskMax){
+			sendMail(EMAIL, EMAIL_PWD, RECIPIENT, "磁盘超过阈值了",String.format("主人,您的磁盘快使用完啦,现在使用率是:%s,赶快处理呀!",useageStr));
+		}
+	}
+	
+	/**
+	 * 检查linux进程数量是否超过阈值
+	 */
+	public static void checkPid(){
+		
+		int pidMax = 5000;//进程数量阈值
+		String pidCmd = "pstree -p|wc -l";
+		String pidResult = MyRuntimeExec.exec(pidCmd);
+		Integer pids = Integer.valueOf(pidResult.trim());
+		System.out.println("当前系统进程使用数量是："+pids);
+		if(pids > pidMax){
+			sendMail(EMAIL, EMAIL_PWD, RECIPIENT, "进程数超过阈值了",String.format("主人,您的进程数超过阈值啦,现在是:%s,赶快处理呀!",pidResult));
+		}
+	}
+	
+	
+	
+	
+	
+	/**
+	 * 
+	 * @param sender  		寄件人
+	 * @param senderPwd  	寄件人密码
+	 * @param recipient  	收件人
+	 * @param text  		内容
+	 * @param title			标题
+	 * @return
+	 */
+	public static boolean sendMail(String sender, String senderPwd, String recipient, String text, String title) {
+		try {
+			final Properties props = new Properties();
+			props.put("mail.smtp.auth", "true");
+			props.put("mail.smtp.host", "smtp.qq.com");
+
+			// 发件人的账号
+			props.put("mail.user", sender);
+			// 发件人的密码
+			props.put("mail.password", senderPwd);
+
+			// 构建授权信息，用于进行SMTP进行身份验证
+			Authenticator authenticator = new Authenticator() {
+				@Override
+				protected PasswordAuthentication getPasswordAuthentication() {
+					// 用户名、密码
+					String userName = props.getProperty("mail.user");
+					String password = props.getProperty("mail.password");
+					return new PasswordAuthentication(userName, password);
+				}
+			};
+			// 使用环境属性和授权信息，创建邮件会话
+			Session mailSession = Session.getInstance(props, authenticator);
+			// 创建邮件消息
+			MimeMessage message = new MimeMessage(mailSession);
+			// 设置发件人
+			String username = props.getProperty("mail.user");
+			InternetAddress form = new InternetAddress(username);
+			message.setFrom(form);
+
+			// 设置收件人
+			InternetAddress toAddress = new InternetAddress(recipient);
+			message.setRecipient(Message.RecipientType.TO, toAddress);
+
+			// 设置邮件标题
+			message.setSubject(title);
+
+			// 设置邮件的内容体
+			message.setContent(text, "text/html;charset=UTF-8");
+			// 发送邮件
+			Transport.send(message);
+			
+			System.out.println("给" + recipient + "发送邮件成功");
+			return true;
+		} catch (Exception e) {
+			System.out.println("给" + recipient + "发送邮件失败,错误：" + e.getMessage());
+			e.printStackTrace();
+		}
+		return false;
+	}
+	
+}
+
